@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { RealtimeAgent, RealtimeSession } from '@openai/agents-realtime';
 import { nurseBettyVoice } from '@/lib/nurseBetty';
 import axios from 'axios';
+import VoiceVisualizer from '@/components/ui/voice-visualizer';
 
 export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -88,46 +89,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-100 to-gray-100 flex flex-col items-center justify-center p-4">
-      <style jsx>{`
-        @keyframes ripple {
-          0% {
-            transform: scale(0.8);
-            opacity: 1;
-          }
-          100% {
-            transform: scale(2.4);
-            opacity: 0;
-          }
-        }
-        .ripple {
-          position: relative;
-          width: 64px;
-          height: 64px;
-        }
-        .ripple span {
-          position: absolute;
-          border: 4px solid #3b82f6;
-          border-radius: 50%;
-          animation: ripple 1.2s ease-out infinite;
-        }
-        .ripple span:nth-child(2) {
-          animation-delay: 0.3s;
-        }
-        .ripple span:nth-child(3) {
-          animation-delay: 0.6s;
-        }
-        .avatar-speaking {
-          animation: pulse 0.5s ease-in-out infinite alternate;
-        }
-        @keyframes pulse {
-          0% {
-            transform: scale(1);
-          }
-          100% {
-            transform: scale(1.05);
-          }
-        }
-      `}</style>
       <header className="mb-8 text-center">
         <h1 className="text-4xl font-bold text-blue-600">AIDARA</h1>
         <p className="text-lg text-gray-700">Your AI Healthcare Assistant</p>
@@ -138,7 +99,7 @@ export default function Home() {
           src="/nurse-betty-avatar.jpg"
           alt="Nurse Betty Avatar"
           className={`w-24 h-24 mx-auto mb-4 rounded-full border-2 border-blue-200 ${
-            agentState === 'speaking' ? 'avatar-speaking' : ''
+            agentState === 'speaking' ? 'animate-pulse' : ''
           }`}
         />
         {error && (
@@ -177,11 +138,7 @@ export default function Home() {
           {agentState === 'processing' ? (
             <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-500"></div>
           ) : agentState === 'speaking' ? (
-            <div className="ripple">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
+            <VoiceVisualizer />
           ) : (
             <svg
               className="w-12 h-12 text-blue-600 animate-pulse"
