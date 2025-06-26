@@ -1,103 +1,205 @@
-import Image from "next/image";
+'use client';
+
+import { useEffect, useState } from 'react';
+import { RealtimeAgent, RealtimeSession } from '@openai/agents-realtime';
+import { nurseBettyVoice } from '@/lib/nurseBetty';
+import axios from 'axios';
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [status, setStatus] = useState('Click "Start Session" to begin.');
+  const [agentState, setAgentState] = useState<'listening' | 'processing' | 'speaking'>('listening');
+  const [error, setError] = useState<string | null>(null);
+  const [session, setSession] = useState<RealtimeSession | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const startSession = async () => {
+    try {
+      setStatus('Initializing...');
+      setError(null);
+
+      // Create a new session
+      const { data } = await axios.post('/api/session');
+      setSessionId(data.sessionId);
+
+      // Generate ephemeral token
+      const { data: tokenData } = await axios.post('/api/generate-token', { sessionId: data.sessionId });
+
+      // Create a session
+      const newSession = new RealtimeSession(nurseBettyVoice, {
+        model: 'gpt-4o-realtime-preview-2025-06-03',
+        config: {
+          inputAudioFormat: 'pcm16',
+          outputAudioFormat: 'pcm16',
+          inputAudioTranscription: { model: 'gpt-4o-mini-transcribe' },
+        },
+      });
+
+      // Connect to the session
+      await newSession.connect({ apiKey: tokenData.token });
+      setSession(newSession);
+      setStatus('Nurse Betty is ready to listen! Speak to start.');
+
+      // Handle interruptions
+      newSession.on('audio_interrupted', () => {
+        console.log('User interrupted Nurse Betty.');
+      });
+
+      // Handle tool calls and responses
+      //@ts-ignore
+      newSession.on('tool_call', () => {
+        setAgentState('processing');
+        setStatus('Nurse Betty is thinking...');
+      });
+
+      //@ts-ignore
+      newSession.on('tool_response', () => {
+        setAgentState('speaking');
+        setStatus('Nurse Betty is speaking...');
+        // Transition back to listening after a delay to simulate speaking duration
+        setTimeout(() => {
+          setAgentState('listening');
+          setStatus('Nurse Betty is ready to listen! Speak to start.');
+        }, 2000); // Adjust delay as needed
+      });
+
+    } catch (error) {
+      console.error('Error initializing session:', error);
+      setError('Failed to initialize session. Please try again.');
+      setStatus('');
+      setSession(null);
+    }
+  };
+
+  const endSession = async () => {
+    if (session) {
+      try {
+        // Assuming RealtimeSession has a disconnect method; adjust if different
+        await session.close?.();
+      } catch (error) {
+        console.error('Error disconnecting session:', error);
+      }
+      setSession(null);
+      setSessionId(null);
+      setAgentState('listening');
+      setStatus('Click "Start Session" to begin.');
+      setError(null);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-blue-100 to-gray-100 flex flex-col items-center justify-center p-4">
+      <style jsx>{`
+        @keyframes ripple {
+          0% {
+            transform: scale(0.8);
+            opacity: 1;
+          }
+          100% {
+            transform: scale(2.4);
+            opacity: 0;
+          }
+        }
+        .ripple {
+          position: relative;
+          width: 64px;
+          height: 64px;
+        }
+        .ripple span {
+          position: absolute;
+          border: 4px solid #3b82f6;
+          border-radius: 50%;
+          animation: ripple 1.2s ease-out infinite;
+        }
+        .ripple span:nth-child(2) {
+          animation-delay: 0.3s;
+        }
+        .ripple span:nth-child(3) {
+          animation-delay: 0.6s;
+        }
+        .avatar-speaking {
+          animation: pulse 0.5s ease-in-out infinite alternate;
+        }
+        @keyframes pulse {
+          0% {
+            transform: scale(1);
+          }
+          100% {
+            transform: scale(1.05);
+          }
+        }
+      `}</style>
+      <header className="mb-8 text-center">
+        <h1 className="text-4xl font-bold text-blue-600">AIDARA</h1>
+        <p className="text-lg text-gray-700">Your AI Healthcare Assistant</p>
+      </header>
+      <main className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+        <h2 className="text-2xl font-semibold mb-4 text-blue-700">Nurse Betty</h2>
+        <img
+          src="/nurse-betty-avatar.jpg"
+          alt="Nurse Betty Avatar"
+          className={`w-24 h-24 mx-auto mb-4 rounded-full border-2 border-blue-200 ${
+            agentState === 'speaking' ? 'avatar-speaking' : ''
+          }`}
+        />
+        {error && (
+          <div className="mb-4">
+            <p className="text-red-500">{error}</p>
+            <button
+              className="mt-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition"
+              onClick={startSession}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        <p className="text-lg mb-4 text-gray-800">{status} {sessionId && `Session: ${sessionId}`}</p>
+        <p className="text-sm text-gray-600 mb-4">
+          Speak to Nurse Betty! Try saying: "I have a headache and fever."
+        </p>
+        <div className="flex justify-center mb-4">
+          {session ? (
+            <button
+              className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
+              onClick={endSession}
+            >
+              End Session
+            </button>
+          ) : (
+            <button
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition"
+              onClick={startSession}
+            >
+              Start Session
+            </button>
+          )}
+        </div>
+        <div className="flex justify-center">
+          {agentState === 'processing' ? (
+            <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-500"></div>
+          ) : agentState === 'speaking' ? (
+            <div className="ripple">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          ) : (
+            <svg
+              className="w-12 h-12 text-blue-600 animate-pulse"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+              />
+            </svg>
+          )}
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
   );
 }
